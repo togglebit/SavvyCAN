@@ -8,8 +8,8 @@
 
 #include "gvretserial.h"
 
-GVRetSerial::GVRetSerial(QString portName, bool useTcp) :
-    CANConnection(portName, "gvret", CANCon::GVRET_SERIAL, 0, 0, false, 0, 3, 4000, true),
+GVRetSerial::GVRetSerial(QString portName, bool useTcp, bool fD) :
+    CANConnection(portName, "gvret", CANCon::GVRET_SERIAL, 0, 0, fD, 0, 3, 4000, true),
     mTimer(this), /*NB: set this as parent of timer to manage it from working thread */
     useTcp(useTcp)
 {
@@ -23,11 +23,10 @@ GVRetSerial::GVRetSerial(QString portName, bool useTcp) :
     validationCounter = 10; //how many times we can miss validation before we die
     isAutoRestart = false;
     espSerialMode = true;
-
     timeBasis = 0;
     lastSystemTimeBasis = 0;
     timeAtGVRETSync = 0;
-
+    fdFlag = fD;
     readSettings();
 }
 
@@ -335,23 +334,25 @@ void GVRetSerial::connectDevice()
         connect(serial, SIGNAL(error(QSerialPort::SerialPortError)), this, SLOT(serialError(QSerialPort::SerialPortError)));
 
         /* configure */
-        serial->setBaudRate(1000000); //most GVRET devices ignore baud, ESP32 needs it set explicitly to the proper value
+        //most GVRET devices ignore baud, ESP32 needs it set explicitly to the proper value
+        //CANFD devices bumped serial to 2Mbaud
+        sendDebug("Setting Baud");
+        serial->setBaudRate(fdFlag ? 2000000 : 1000000);
         serial->setDataBits(serial->Data8);
-
         if (espSerialMode)
         {
             sendDebug("Trying ESP32 Serial Mode");
             serial->setFlowControl(serial->NoFlowControl);
             if (!serial->open(QIODevice::ReadWrite))
-            {
-                //sendDebug("Error returned during port opening: " + serial->errorString());
-            }
+                {
+                    sendDebug("Error returned during port opening: " + serial->errorString());
+                }
             else
-            {
-                serial->setDataTerminalReady(false); //ESP32 uses these for bootloader selection and reset so turn them off
-                serial->setRequestToSend(false);                
-                QTimer::singleShot(3000, this, SLOT(deviceConnected())); //give ESP32 some time as it could have rebooted
-            }
+                {
+                    serial->setDataTerminalReady(false); //ESP32 uses these for bootloader selection and reset so turn them off
+                    serial->setRequestToSend(false);
+                    QTimer::singleShot(3000, this, SLOT(deviceConnected())); //give ESP32 some time as it could have rebooted
+                }
         }
         else
         {            
@@ -555,7 +556,7 @@ void GVRetSerial::connectionTimeout()
         //then emit the the failure signal and see if anyone cares
         sendDebug("Failed to connect to GVRET at that com port");
 
-        //toggle the serial mode and try again
+        //toggle the serial mode and baud try again
         espSerialMode = !espSerialMode;
         disconnectDevice();
         connectDevice();
@@ -597,7 +598,6 @@ void GVRetSerial::readSerialData()
 void GVRetSerial::debugInput(QByteArray bytes) {
    sendToSerial(bytes);
 }
-
 void GVRetSerial::procRXChar(unsigned char c)
 {
     CANConStatus stats;
@@ -667,6 +667,8 @@ void GVRetSerial::procRXChar(unsigned char c)
             break;
         }
         break;
+    case BUILD_FD_FRAME:
+        fdFlag = 1;
     case BUILD_CAN_FRAME:
         switch (rx_step)
         {
@@ -709,17 +711,30 @@ void GVRetSerial::procRXChar(unsigned char c)
             buildFrame.setFrameId(buildId);
             break;
         case 8:
-            buildData.resize(c & 0xF);
-            buildFrame.bus = (c & 0xF0) >> 4;
+            if(!fdFlag)
+            {
+                buildData.resize(c & 0xF);
+                buildFrame.bus = (c & 0xF0) >> 4;
+            }else
+            {
+                buildData.resize(c);
+            }
             break;
         default:
-            if (rx_step < buildData.length() + 9)
+
+        if(fdFlag && rx_step == 9)
             {
-                buildData[rx_step - 9] = c;
-                if (rx_step == buildData.length() + 8) //it's the last data byte so immediately process the frame
+                buildFrame.bus = c ;
+                break;
+            }
+            if (rx_step < buildData.length() + (9 + fdFlag))
+            {
+                buildData[rx_step - (9 + fdFlag)] = c;
+                if (rx_step == (buildData.length() + ( 8 + fdFlag))) //it's the last data byte so immediately process the frame
                 {
                     rx_state = IDLE;
                     rx_step = 0;
+                    fdFlag = 0;
                     buildFrame.isReceived = true;
                     buildFrame.setPayload(buildData);
                     buildFrame.setFrameType(QCanBusFrame::FrameType::DataFrame);
@@ -747,88 +762,7 @@ void GVRetSerial::procRXChar(unsigned char c)
             {
                 rx_state = IDLE;
                 rx_step = 0;
-            }
-            break;
-        }
-        rx_step++;
-        break;
-    case BUILD_FD_FRAME:
-        switch (rx_step)
-        {
-        case 0:
-            buildTimestamp = c;
-            break;
-        case 1:
-            buildTimestamp |= (uint)(c << 8);
-            break;
-        case 2:
-            buildTimestamp |= (uint)c << 16;
-            break;
-        case 3:
-            buildTimestamp |= (uint)c << 24;
-
-            buildTimestamp += timeBasis;
-            if (useSystemTime)
-            {
-                buildTimestamp = QDateTime::currentMSecsSinceEpoch() * 1000l;
-            }
-            buildFrame.setTimeStamp(QCanBusFrame::TimeStamp(0, buildTimestamp));
-            break;
-        case 4:
-            buildId = c;
-            break;
-        case 5:
-            buildId |= c << 8;
-            break;
-        case 6:
-            buildId |= c << 16;
-            break;
-        case 7:
-            buildId |= c << 24;
-            if ((buildId & 1 << 31) == 1u << 31)
-            {
-                buildId &= 0x7FFFFFFF;
-                buildFrame.setExtendedFrameFormat(true);
-            }
-            else buildFrame.setExtendedFrameFormat(false);
-            buildFrame.setFrameId(buildId);
-            break;
-        case 8:
-            buildData.resize(c & 0x3F);
-            break;
-        case 9:
-            buildFrame.bus = c;
-            break;
-        default:
-            if (rx_step < buildData.length() + 10)
-            {
-                buildData[rx_step - 9] = c;
-            }
-            else
-            {
-                rx_state = IDLE;
-                rx_step = 0;
-                buildFrame.isReceived = true;
-                buildFrame.setPayload(buildData);
-                buildFrame.setFrameType(QCanBusFrame::FrameType::DataFrame);
-                if (!isCapSuspended())
-                {
-                    /* get frame from queue */
-                    CANFrame* frame_p = getQueue().get();
-                    if(frame_p) {
-                        //qDebug() << "GVRET got frame on bus " << frame_p->bus;
-                        /* copy frame */
-                        *frame_p = buildFrame;
-                        checkTargettedFrame(buildFrame);
-                        /* enqueue frame */
-                        getQueue().queue();
-                    }
-                    else
-                        qDebug() << "can't get a frame, ERROR";
-
-                    //take the time the frame came in and try to resync the time base.
-                    //if (continuousTimeSync) txTimestampBasis = QDateTime::currentMSecsSinceEpoch() - (buildFrame.timestamp / 1000);
-                }
+                fdFlag = 0;
             }
             break;
         }

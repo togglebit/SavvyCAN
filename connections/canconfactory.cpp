@@ -17,11 +17,14 @@ CANConnection* CanConFactory::create(type pType, QString pPortName, QString pDri
         return new SerialBusConnection(pPortName, pDriverName);
     case GVRET_SERIAL:
         if(pPortName.contains(".") && !pPortName.contains("tty") && !pPortName.contains("serial"))
-        return new GVRetSerial(pPortName, true);
-        else
-        return new GVRetSerial(pPortName, false);
+        {
+            return new GVRetSerial(pPortName, true, pCanFd);
+        }else
+        {
+            return new GVRetSerial(pPortName, false, pCanFd);
+        }
     case REMOTE:
-        return new GVRetSerial(pPortName, true);  //it's a special case of GVRET connected over TCP/IP so it uses the same class
+        return new GVRetSerial(pPortName, true, false);  //it's a special case of GVRET connected over TCP/IP so it uses the same class
     case LAWICEL:
         return new LAWICELSerial(pPortName, pSerialSpeed, pBusSpeed, pCanFd, pDataRate);
     case KAYAK:

@@ -145,9 +145,10 @@ void NewConnectionDialog::selectSerial()
     ui->cbSerialSpeed->setHidden(true);
     ui->lblCANSpeed->setHidden(true);
     ui->lblSerialSpeed->setHidden(true);
-    ui->cbCanFd->setHidden(true);
+    ui->cbCanFd->setHidden(false);
     ui->cbDataRate->setHidden(true);
     ui->lblDataRate->setHidden(true);
+
 
     ui->cbPort->clear();
     ports = QSerialPortInfo::availablePorts();
@@ -433,9 +434,9 @@ int NewConnectionDialog::getDataRate()
 
 bool NewConnectionDialog::isCanFd()
  {
-     if (getConnectionType() == CANCon::LAWICEL)
+     if (getConnectionType() == CANCon::LAWICEL || (getConnectionType() == CANCon::GVRET_SERIAL))
      {
-         return ui->cbCanFd;
+         return ui->cbCanFd->checkState();
      }
      else return 0;
  }

@@ -4,7 +4,10 @@
 #
 #-------------------------------------------------
 
-QT = core gui printsupport qml serialbus serialport widgets help network opengl
+QT = core gui qml widgets help network opengl
+QT += printsupport
+QT += serialbus
+QT += serialport
 
 CONFIG(release, debug|release):DEFINES += QT_NO_DEBUG_OUTPUT
 

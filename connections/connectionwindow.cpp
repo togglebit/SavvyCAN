@@ -318,8 +318,8 @@ void ConnectionWindow::handleResetConn()
     serSpeed = 0; //TODO: implement these
     busSpeed = 0;
     dataRate = 0;
-    canFd = false;
-
+    //canFd = false;
+    canFd = ui->canFDEnable->checkState();
 
     /* stop and delete connection */
     conn_p->stop();
@@ -409,13 +409,14 @@ void ConnectionWindow::populateBusDetails(int offset)
         //ui->lblBusNum->setText(QString::number(busBase + offset));
         ui->ckListenOnly->setChecked(bus.isListenOnly());
         ui->ckEnable->setChecked(bus.isActive());
-        if (conn_p->getType() == CANCon::type::SERIALBUS || conn_p->getType() == CANCon::type::LAWICEL)
+        if (conn_p->getType() == CANCon::type::SERIALBUS || conn_p->getType() == CANCon::type::LAWICEL ||conn_p->getType() == CANCon::type::GVRET_SERIAL )
         {
-            ui->canFDEnable->setVisible(true);
-            ui->canFDEnable_label->setVisible(true);
+            qDebug() << "GVRET bus "<< offset <<"FDEnableFlag " << bus.canFD;
+            ui->canFDEnable->setVisible(bus.isCanFD());
+            ui->canFDEnable_label->setVisible(bus.isCanFD());
             ui->canFDEnable->setChecked(bus.isCanFD());
-            ui->cbDataRate->setVisible(true);
-            ui->dataRate_label->setVisible(true);
+            ui->cbDataRate->setVisible(bus.isCanFD());
+            ui->dataRate_label->setVisible(bus.isCanFD());
         }
 
         bool found = false;

@@ -45,7 +45,7 @@ class GVRetSerial : public CANConnection
     Q_OBJECT
 
 public:
-    GVRetSerial(QString portName, bool useTcp);
+    GVRetSerial(QString portName, bool useTcp, bool fD);
     virtual ~GVRetSerial();
 
 protected:
@@ -101,6 +101,7 @@ protected:
     int can0Baud, can1Baud, swcanBaud, lin1Baud, lin2Baud;
     bool can0Enabled, can1Enabled, swcanEnabled, lin1Enabled, lin2Enabled;
     bool can0ListenOnly, can1ListenOnly, swcanListenOnly;
+    bool fdFlag;
     int deviceBuildNum;
     int deviceSingleWireMode;
     uint32_t buildTimeBasis;
