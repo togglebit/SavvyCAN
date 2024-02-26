@@ -14,7 +14,7 @@ build/
 # Compiled Dynamic libraries
 *.so
 *.dylib
-*.dll
+
 
 # Fortran module files
 *.mod
@@ -26,11 +26,11 @@ build/
 *.lib
 
 # Executables
-*.exe
+#*.exe
 *.out
 *.app
 *.user
-SavvyCAN
+#SavvyCAN
 
 # Generated files
 **/moc_*
